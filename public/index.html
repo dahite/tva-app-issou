@@ -15,7 +15,7 @@
   .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:20px 22px; margin-bottom:20px; }
   .card h2 { margin:0 0 14px; font-size:15px; color:var(--navy); }
   label.field { display:block; font-size:13px; font-weight:600; margin:0 0 6px; }
-  .drop { border:2px dashed #c3ccdb; border-radius:10px; padding:16px; text-align:center; font-size:13px; color:#555; cursor:pointer; background:#fafbfc; }
+  .drop { display:block; border:2px dashed #c3ccdb; border-radius:10px; padding:16px; text-align:center; font-size:13px; color:#555; cursor:pointer; background:#fafbfc; }
   .drop input { display:none; }
   .filelist { font-size:12px; color:#333; margin-top:8px; }
   .grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
@@ -24,11 +24,18 @@
   button { background:var(--navy); color:#fff; border:0; border-radius:8px; padding:11px 20px; font-size:14px; font-weight:600; cursor:pointer; }
   button.secondary { background:#fff; color:var(--navy); border:1px solid var(--navy); }
   button:disabled { opacity:.5; cursor:not-allowed; }
-  table { width:100%; border-collapse:collapse; font-size:12px; margin-top:10px; }
-  th { background:var(--navy); color:#fff; padding:6px 8px; text-align:left; font-weight:600; }
-  td { border:1px solid var(--line); padding:2px; }
-  td input { width:100%; border:0; padding:5px 6px; font-size:12px; background:transparent; }
+  .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; border-radius:6px; }
+  table { border-collapse:collapse; font-size:12px; margin-top:10px; }
+  th { background:var(--navy); color:#fff; padding:6px 8px; text-align:left; font-weight:600; white-space:nowrap; }
+  td { border:1px solid var(--line); padding:2px; white-space:nowrap; }
+  td input[type=text] { min-width:110px; }
+  td input[type=number] { min-width:90px; text-align:right; }
+  td input[type=text], td input[type=number] {
+    width:100%; box-sizing:border-box; border:0; padding:6px 8px; font-size:12.5px; background:transparent;
+  }
   td input:focus { outline:2px solid var(--light); background:#fff; }
+  td input[type=checkbox] { width:16px; height:16px; margin:6px auto; display:block; }
+  td.center { text-align:center; }
   .status { font-size:13px; padding:10px 14px; border-radius:8px; margin:10px 0; display:none; }
   .status.info { background:#eef3ff; color:#1F3864; display:block; }
   .status.err { background:#fdeaea; color:#b00020; display:block; }
@@ -38,6 +45,12 @@
   .hidden { display:none; }
   .actions { display:flex; gap:12px; margin-top:16px; }
   .note { font-size:12px; color:#666; margin-top:8px; }
+  .exceptions { font-size:12px; background:#fff8e6; border:1px solid #f0d98c; border-radius:8px; padding:10px 12px; margin-top:12px; }
+  .exceptions ul { margin:6px 0 0; padding-left:18px; }
+  .recap-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:14px; }
+  .recap-item { background:#fafbfc; border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+  .recap-item .l { font-size:11px; color:#666; text-transform:uppercase; letter-spacing:.03em; }
+  .recap-item .v { font-size:18px; font-weight:700; color:var(--navy); margin-top:2px; }
 </style>
 </head>
 <body>
@@ -103,7 +116,7 @@
         <div class="filelist" id="lReleve"></div>
       </div>
     </div>
-    <p class="note">Formats PDF ou image. Le DOCX de vente doit être converti en PDF (l'API ne lit pas le .docx directement).</p>
+    <p class="note">Formats PDF ou image. Le DOCX de vente contenant des photos de facture est accepté (converti automatiquement).</p>
     <div class="actions">
       <button id="btnExtract">Lire les documents (IA)</button>
     </div>
@@ -111,19 +124,50 @@
   </div>
 
   <div class="card hidden" id="reviewCard">
-    <h2>3 · Vérification des données extraites <span style="font-weight:400;font-size:12px;color:#b00020">— corrige avant de générer</span></h2>
+    <h2>3 · Vérification des données extraites <span style="font-weight:400;font-size:12px;color:#b00020">— corrige avant de calculer</span></h2>
 
     <h3 style="font-size:13px;color:var(--navy)">Achats</h3>
-    <div style="overflow:auto"><table id="tAchats"></table></div>
+    <div class="table-wrap"><table id="tAchats"></table></div>
 
     <h3 style="font-size:13px;color:var(--navy);margin-top:18px">Ventes</h3>
-    <div style="overflow:auto"><table id="tVentes"></table></div>
+    <div class="table-wrap"><table id="tVentes"></table></div>
 
     <h3 style="font-size:13px;color:var(--navy);margin-top:18px">Relevé bancaire</h3>
-    <div style="overflow:auto"><table id="tReleve"></table></div>
+    <div class="table-wrap"><table id="tReleve"></table></div>
 
     <div class="actions">
-      <button id="btnGenerate">Calculer & générer l'Excel</button>
+      <button id="btnCompute">Calculer les déductions et le CA</button>
+    </div>
+    <div class="status" id="statCompute"></div>
+  </div>
+
+  <div class="card hidden" id="deductionsCard">
+    <h2>4 · Tableau des déductions (achats) <span style="font-weight:400;font-size:12px;color:#b00020">— modifiable</span></h2>
+    <div class="table-wrap"><table id="tDeductions"></table></div>
+    <div class="exceptions hidden" id="exceptionsBox">
+      <strong>Lignes exclues (règle A — paiement antérieur au mois de la facture) :</strong>
+      <ul id="exceptionsList"></ul>
+    </div>
+  </div>
+
+  <div class="card hidden" id="caCard">
+    <h2>5 · Chiffre d'affaires encaissé (ventes) <span style="font-weight:400;font-size:12px;color:#b00020">— modifiable</span></h2>
+    <div class="table-wrap"><table id="tCA"></table></div>
+    <p class="note">Décoche "Encaissé" pour exclure une vente du chiffre d'affaires de la période.</p>
+  </div>
+
+  <div class="card hidden" id="recapCard">
+    <h2>6 · Déclaration TVA <span style="font-weight:400;font-size:12px;color:#666">— recalculée en direct</span></h2>
+    <div class="recap-grid">
+      <div class="recap-item"><div class="l">TVA facturée</div><div class="v" id="recTvaFacturee">0.00</div></div>
+      <div class="recap-item"><div class="l">TVA récupérable</div><div class="v" id="recTvaRecuperable">0.00</div></div>
+      <div class="recap-item"><div class="l">Crédit antérieur</div><div class="v" id="recCreditPrecedent">0.00</div></div>
+      <div class="recap-item"><div class="l">Total récupérable</div><div class="v" id="recTotalRecup">0.00</div></div>
+      <div class="recap-item"><div class="l">TVA due</div><div class="v" id="recTvaDue">0.00</div></div>
+      <div class="recap-item"><div class="l">Crédit de TVA</div><div class="v" id="recCreditTVA">0.00</div></div>
+    </div>
+    <div class="actions">
+      <button id="btnGenerate">Générer l'Excel</button>
     </div>
     <div class="status" id="statGen"></div>
   </div>
@@ -133,6 +177,12 @@
 <script>
 const $ = (id) => document.getElementById(id);
 let extracted = { achats:[], ventes:[], releve:[] };
+let computed = { deductions:[], journalExceptions:[], ventesEncaissees:[] };
+
+function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+function sumBy(arr, key, filter) {
+  return round2(arr.filter(filter || (() => true)).reduce((s, r) => s + (Number(r[key]) || 0), 0));
+}
 
 // switch mensuel/trimestriel
 $("ptype").addEventListener("change", (e) => {
@@ -153,6 +203,16 @@ function setStatus(el, type, msg, spin=false) {
   el.innerHTML = (spin ? '<span class="spinner"></span>' : "") + msg;
 }
 
+function currentPeriod() {
+  return {
+    type: $("ptype").value,
+    year: parseInt($("pyear").value,10),
+    month: parseInt($("pmonth").value,10),
+    quarter: parseInt($("pquarter").value,10),
+    creditPrecedent: parseFloat($("pcredit").value) || 0,
+  };
+}
+
 // ---- Étape extraction ----
 $("btnExtract").addEventListener("click", async () => {
   const fd = new FormData();
@@ -169,7 +229,8 @@ $("btnExtract").addEventListener("click", async () => {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error);
     extracted = { achats:data.achats||[], ventes:data.ventes||[], releve:data.releve||[] };
-    renderTables();
+    renderExtractedTables();
+    ["deductionsCard","caCard","recapCard"].forEach(id => $(id).classList.add("hidden"));
     $("reviewCard").classList.remove("hidden");
     setStatus($("statExtract"), "ok", `Lu : ${extracted.achats.length} achat(s), ${extracted.ventes.length} vente(s), ${extracted.releve.length} ligne(s) de relevé.`);
     $("reviewCard").scrollIntoView({ behavior:"smooth" });
@@ -180,7 +241,7 @@ $("btnExtract").addEventListener("click", async () => {
   }
 });
 
-// ---- Tables éditables ----
+// ---- Tables éditables génériques ----
 function editableTable(tableId, rows, cols) {
   const t = $(tableId);
   t.innerHTML = "";
@@ -190,18 +251,28 @@ function editableTable(tableId, rows, cols) {
     const tr = t.insertRow();
     cols.forEach(c => {
       const td = tr.insertCell();
+      if (c.type === "checkbox") {
+        td.className = "center";
+        const inp = document.createElement("input");
+        inp.type = "checkbox";
+        inp.checked = !!row[c.key];
+        inp.addEventListener("change", () => { row[c.key] = inp.checked; c.onChange && c.onChange(); });
+        td.appendChild(inp);
+        return;
+      }
       const inp = document.createElement("input");
+      inp.type = c.type === "number" ? "number" : "text";
       inp.value = row[c.key] ?? "";
-      inp.dataset.ri = ri; inp.dataset.key = c.key; inp.dataset.type = c.type||"text";
       inp.addEventListener("input", () => {
         const v = inp.value;
         row[c.key] = (c.type==="number") ? (v==="" ? null : parseFloat(v)) : (v===""? null : v);
+        c.onChange && c.onChange();
       });
       td.appendChild(inp);
     });
   });
 }
-function renderTables() {
+function renderExtractedTables() {
   editableTable("tAchats", extracted.achats, [
     {key:"numeroFacture",label:"N° Facture"},{key:"date",label:"Date"},{key:"fournisseur",label:"Fournisseur"},
     {key:"identifiantFiscal",label:"IF"},{key:"ice",label:"ICE"},{key:"designation",label:"Désignation"},
@@ -220,22 +291,97 @@ function renderTables() {
   ]);
 }
 
+// ---- Étape calcul (déductions + CA) ----
+$("btnCompute").addEventListener("click", async () => {
+  const errBox = $("statCompute");
+  $("btnCompute").disabled = true;
+  setStatus(errBox, "info", "Calcul en cours…", true);
+  try {
+    const res = await fetch("/api/compute", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ achats: extracted.achats, ventes: extracted.ventes, releve: extracted.releve, period: currentPeriod() }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    computed.deductions = data.result.deductions;
+    computed.journalExceptions = data.result.journalExceptions;
+    computed.ventesEncaissees = data.result.ventesEncaissees;
+    renderDeductionsTable();
+    renderCATable();
+    recomputeRecap();
+    $("deductionsCard").classList.remove("hidden");
+    $("caCard").classList.remove("hidden");
+    $("recapCard").classList.remove("hidden");
+    setStatus(errBox, "ok", "Calcul terminé — vérifie/corrige les tableaux ci-dessous avant de générer l'Excel.");
+    $("deductionsCard").scrollIntoView({ behavior:"smooth" });
+  } catch (e) {
+    setStatus(errBox, "err", "Erreur : " + e.message);
+  } finally {
+    $("btnCompute").disabled = false;
+  }
+});
+
+function renderDeductionsTable() {
+  editableTable("tDeductions", computed.deductions, [
+    {key:"numeroFacture",label:"N° Facture"},{key:"date",label:"Date"},{key:"fournisseur",label:"Fournisseur"},
+    {key:"identifiantFiscal",label:"IF"},{key:"ice",label:"ICE"},{key:"designation",label:"Désignation"},
+    {key:"montantHT",label:"HT",type:"number",onChange:recomputeRecap},{key:"taux",label:"Taux",type:"number",onChange:recomputeRecap},
+    {key:"montantTVA",label:"TVA",type:"number",onChange:recomputeRecap},{key:"montantTTC",label:"TTC",type:"number",onChange:recomputeRecap},
+    {key:"modePaiement",label:"Mode paiement"},{key:"datePaiement",label:"Date paiement"},
+    {key:"prorata",label:"Prorata %",type:"number"},{key:"compteTresorerie",label:"Compte trésorerie"},
+  ]);
+  const box = $("exceptionsBox"), list = $("exceptionsList");
+  if (computed.journalExceptions.length) {
+    list.innerHTML = computed.journalExceptions.map(e =>
+      `<li>${e.facture} — facture du ${e.dateFacture}, payée le ${e.datePaiement} (${e.montantTTC}) : ${e.motif}</li>`
+    ).join("");
+    box.classList.remove("hidden");
+  } else {
+    box.classList.add("hidden");
+  }
+}
+
+function renderCATable() {
+  editableTable("tCA", computed.ventesEncaissees, [
+    {key:"numeroFacture",label:"N° Facture"},{key:"date",label:"Date"},{key:"client",label:"Client"},
+    {key:"designation",label:"Désignation"},{key:"montantHT",label:"HT",type:"number",onChange:recomputeRecap},
+    {key:"taux",label:"Taux",type:"number",onChange:recomputeRecap},{key:"montantTVA",label:"TVA",type:"number",onChange:recomputeRecap},
+    {key:"montantTTC",label:"TTC",type:"number",onChange:recomputeRecap},
+    {key:"encaisse",label:"Encaissé",type:"checkbox",onChange:recomputeRecap},
+    {key:"datePaiement",label:"Date paiement"},{key:"refBanque",label:"Réf. banque"},
+  ]);
+}
+
+function recomputeRecap() {
+  const tvaRecuperable = sumBy(computed.deductions, "montantTVA");
+  const tvaFacturee = sumBy(computed.ventesEncaissees, "montantTVA", (v) => v.encaisse);
+  const creditPrecedent = parseFloat($("pcredit").value) || 0;
+  const totalRecup = round2(tvaRecuperable + creditPrecedent);
+  const tvaDue = tvaFacturee - totalRecup > 0 ? round2(tvaFacturee - totalRecup) : 0;
+  const creditTVA = totalRecup - tvaFacturee > 0 ? round2(totalRecup - tvaFacturee) : 0;
+  $("recTvaFacturee").textContent = tvaFacturee.toFixed(2);
+  $("recTvaRecuperable").textContent = tvaRecuperable.toFixed(2);
+  $("recCreditPrecedent").textContent = creditPrecedent.toFixed(2);
+  $("recTotalRecup").textContent = totalRecup.toFixed(2);
+  $("recTvaDue").textContent = tvaDue.toFixed(2);
+  $("recCreditTVA").textContent = creditTVA.toFixed(2);
+}
+$("pcredit").addEventListener("input", recomputeRecap);
+
 // ---- Étape génération ----
 $("btnGenerate").addEventListener("click", async () => {
-  const type = $("ptype").value;
-  const period = {
-    type,
-    year: parseInt($("pyear").value,10),
-    month: parseInt($("pmonth").value,10),
-    quarter: parseInt($("pquarter").value,10),
-    creditPrecedent: parseFloat($("pcredit").value) || 0,
-  };
+  const period = currentPeriod();
   $("btnGenerate").disabled = true;
-  setStatus($("statGen"), "info", "Calcul et génération de l'Excel…", true);
+  setStatus($("statGen"), "info", "Génération de l'Excel…", true);
   try {
     const res = await fetch("/api/generate", {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ ...extracted, period }),
+      body: JSON.stringify({
+        deductions: computed.deductions,
+        journalExceptions: computed.journalExceptions,
+        ventesEncaissees: computed.ventesEncaissees,
+        period,
+      }),
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error);

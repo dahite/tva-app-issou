@@ -66,7 +66,8 @@ function paymentHints(modePaiement, fournisseur) {
   return hints;
 }
 
-export function computeAll({ achats, ventes, releve, period }) {
+// Étape 1 : enrichit les achats (mode paiement, compte trésorerie, prorata) et applique la règle A
+export function buildDeductions(achats, releve) {
   const journalExceptions = [];
 
   const enriched = achats.map((f) => {
@@ -83,7 +84,6 @@ export function computeAll({ achats, ventes, releve, period }) {
     };
   });
 
-  // Règle A : exclusion si le paiement est sur un MOIS antérieur à celui de la facture
   const deductions = [];
   enriched.forEach((d) => {
     const mf = ymNum(parseDate(d.date));
@@ -99,6 +99,26 @@ export function computeAll({ achats, ventes, releve, period }) {
     }
   });
 
+  return { deductions, journalExceptions };
+}
+
+// Étape 2 : rapproche les ventes avec le relevé et détermine ce qui est encaissé sur la période
+export function buildVentesEncaissees(ventes, releve, period) {
+  return ventes.map((v) => {
+    const op = matchInReleve(v.montantTTC, [String(v.numeroFacture || ""), (v.client || "").split(/\s+/)[0]],
+      releve.filter((o) => o.credit != null));
+    const dansPeriode = op && inPeriod(op.dateOperation, period);
+    return {
+      ...v, datePaiement: op ? op.dateOperation : null,
+      refBanque: op ? (op.reference || op.nature) : null,
+      encaisse: !!dansPeriode, horsPeriode: op && !dansPeriode,
+    };
+  });
+}
+
+// Étape 3 : à partir des déductions et ventes encaissées (éventuellement corrigées à la main),
+// calcule les totaux, le récapitulatif TVA, le rapprochement et les anomalies.
+export function finalize({ deductions, journalExceptions = [], ventesEncaissees, period }) {
   // Règle I : totaux par taux
   const totauxParTaux = {};
   deductions.forEach((d) => {
@@ -111,25 +131,15 @@ export function computeAll({ achats, ventes, releve, period }) {
   Object.values(totauxParTaux).forEach((x) => { x.ht = round2(x.ht); x.tva = round2(x.tva); x.ttc = round2(x.ttc); });
   const totTVAdeduc = round2(Object.values(totauxParTaux).reduce((s, x) => s + x.tva, 0));
 
-  // 2. CA encaissé
+  // 2. CA encaissé (règle F)
   const caParTaux = {};
-  const ventesEncaissees = [];
-  ventes.forEach((v) => {
-    const op = matchInReleve(v.montantTTC, [String(v.numeroFacture || ""), (v.client || "").split(/\s+/)[0]],
-      releve.filter((o) => o.credit != null));
-    const dansPeriode = op && inPeriod(op.dateOperation, period);
-    if (dansPeriode) {
-      const t = v.taux || 0;
-      caParTaux[t] = caParTaux[t] || { ttc: 0, ht: 0, tva: 0 };
-      caParTaux[t].ttc += v.montantTTC || 0;
-      caParTaux[t].ht += v.montantHT || 0;
-      caParTaux[t].tva += v.montantTVA || 0;
-    }
-    ventesEncaissees.push({
-      ...v, datePaiement: op ? op.dateOperation : null,
-      refBanque: op ? (op.reference || op.nature) : null,
-      encaisse: !!dansPeriode, horsPeriode: op && !dansPeriode,
-    });
+  ventesEncaissees.forEach((v) => {
+    if (!v.encaisse) return;
+    const t = v.taux || 0;
+    caParTaux[t] = caParTaux[t] || { ttc: 0, ht: 0, tva: 0 };
+    caParTaux[t].ttc += v.montantTTC || 0;
+    caParTaux[t].ht += v.montantHT || 0;
+    caParTaux[t].tva += v.montantTVA || 0;
   });
   Object.values(caParTaux).forEach((x) => { x.ttc = round2(x.ttc); x.ht = round2(x.ht); x.tva = round2(x.tva); });
 
@@ -141,7 +151,7 @@ export function computeAll({ achats, ventes, releve, period }) {
   const tvaDue = tvaFacturee - totalRecup > 0 ? round2(tvaFacturee - totalRecup) : 0;
   const creditTVA = totalRecup - tvaFacturee > 0 ? round2(totalRecup - tvaFacturee) : 0;
 
-  // 4. Rapprochement (G)
+  // 4. Rapprochement (G) — achats conformes + toutes les ventes
   const rapprochement = [];
   deductions.forEach((d) => {
     rapprochement.push({
@@ -192,4 +202,11 @@ export function computeAll({ achats, ventes, releve, period }) {
     rapprochement, totFactRappro, totBqRappro,
     anomalies, journalExceptions,
   };
+}
+
+// Calcul complet en un seul appel, à partir des données brutes extraites par l'IA
+export function computeAll({ achats, ventes, releve, period }) {
+  const { deductions, journalExceptions } = buildDeductions(achats, releve);
+  const ventesEncaissees = buildVentesEncaissees(ventes, releve, period);
+  return finalize({ deductions, journalExceptions, ventesEncaissees, period });
 }
