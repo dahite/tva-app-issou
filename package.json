@@ -1,0 +1,17 @@
+{
+  "name": "tva-maroc-app",
+  "version": "2.0.0",
+  "description": "Application locale de calcul TVA et rapprochement bancaire (régime des encaissements) — extraction PDF via Gemini",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}

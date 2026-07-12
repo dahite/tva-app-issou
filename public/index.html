@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TVA Maroc — Rapprochement & Déclaration</title>
+<style>
+  :root { --navy:#1F3864; --light:#D9E1F2; --line:#e2e2e2; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,Segoe UI,Arial,sans-serif; margin:0; background:#f5f6f8; color:#1a1a1a; }
+  header { background:var(--navy); color:#fff; padding:18px 28px; }
+  header h1 { margin:0; font-size:20px; font-weight:700; }
+  header p { margin:4px 0 0; font-size:13px; opacity:.85; }
+  .wrap { max-width:1200px; margin:0 auto; padding:24px 28px 80px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:20px 22px; margin-bottom:20px; }
+  .card h2 { margin:0 0 14px; font-size:15px; color:var(--navy); }
+  label.field { display:block; font-size:13px; font-weight:600; margin:0 0 6px; }
+  .drop { border:2px dashed #c3ccdb; border-radius:10px; padding:16px; text-align:center; font-size:13px; color:#555; cursor:pointer; background:#fafbfc; }
+  .drop input { display:none; }
+  .filelist { font-size:12px; color:#333; margin-top:8px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
+  .period-row { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; }
+  select, input[type=number] { padding:8px 10px; border:1px solid #c3ccdb; border-radius:8px; font-size:14px; }
+  button { background:var(--navy); color:#fff; border:0; border-radius:8px; padding:11px 20px; font-size:14px; font-weight:600; cursor:pointer; }
+  button.secondary { background:#fff; color:var(--navy); border:1px solid var(--navy); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  table { width:100%; border-collapse:collapse; font-size:12px; margin-top:10px; }
+  th { background:var(--navy); color:#fff; padding:6px 8px; text-align:left; font-weight:600; }
+  td { border:1px solid var(--line); padding:2px; }
+  td input { width:100%; border:0; padding:5px 6px; font-size:12px; background:transparent; }
+  td input:focus { outline:2px solid var(--light); background:#fff; }
+  .status { font-size:13px; padding:10px 14px; border-radius:8px; margin:10px 0; display:none; }
+  .status.info { background:#eef3ff; color:#1F3864; display:block; }
+  .status.err { background:#fdeaea; color:#b00020; display:block; }
+  .status.ok { background:#e8f7ee; color:#0a7d38; display:block; }
+  .spinner { display:inline-block; width:14px; height:14px; border:2px solid #fff; border-top-color:transparent; border-radius:50%; animation:spin .7s linear infinite; vertical-align:middle; margin-right:8px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .hidden { display:none; }
+  .actions { display:flex; gap:12px; margin-top:16px; }
+  .note { font-size:12px; color:#666; margin-top:8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>TVA Maroc — Rapprochement bancaire & Déclaration</h1>
+  <p>Régime des encaissements · lecture automatique des PDF · vérification manuelle avant génération</p>
+</header>
+<div class="wrap">
+
+  <div class="card">
+    <h2>1 · Période de déclaration</h2>
+    <div class="period-row">
+      <div>
+        <label class="field">Type</label>
+        <select id="ptype">
+          <option value="mensuel">Mensuel</option>
+          <option value="trimestriel">Trimestriel</option>
+        </select>
+      </div>
+      <div id="monthBox">
+        <label class="field">Mois</label>
+        <select id="pmonth">
+          <option value="1">Janvier</option><option value="2">Février</option><option value="3">Mars</option>
+          <option value="4">Avril</option><option value="5" selected>Mai</option><option value="6">Juin</option>
+          <option value="7">Juillet</option><option value="8">Août</option><option value="9">Septembre</option>
+          <option value="10">Octobre</option><option value="11">Novembre</option><option value="12">Décembre</option>
+        </select>
+      </div>
+      <div id="quarterBox" class="hidden">
+        <label class="field">Trimestre</label>
+        <select id="pquarter">
+          <option value="1">T1 (Jan–Mar)</option><option value="2">T2 (Avr–Juin)</option>
+          <option value="3">T3 (Juil–Sep)</option><option value="4">T4 (Oct–Déc)</option>
+        </select>
+      </div>
+      <div>
+        <label class="field">Année</label>
+        <input type="number" id="pyear" value="2026" style="width:100px" />
+      </div>
+      <div>
+        <label class="field">Crédit TVA antérieur (optionnel)</label>
+        <input type="number" id="pcredit" placeholder="0.00" step="0.01" style="width:150px" />
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2 · Dépôt des documents</h2>
+    <div class="grid">
+      <div>
+        <label class="field">Factures d'achat</label>
+        <label class="drop">📄 Glisser / choisir<input type="file" id="fAchats" multiple accept=".pdf,.jpg,.jpeg,.png" /></label>
+        <div class="filelist" id="lAchats"></div>
+      </div>
+      <div>
+        <label class="field">Factures de vente</label>
+        <label class="drop">📄 Glisser / choisir<input type="file" id="fVentes" multiple accept=".pdf,.jpg,.jpeg,.png,.docx" /></label>
+        <div class="filelist" id="lVentes"></div>
+      </div>
+      <div>
+        <label class="field">Relevé bancaire</label>
+        <label class="drop">🏦 Glisser / choisir<input type="file" id="fReleve" multiple accept=".pdf,.jpg,.jpeg,.png" /></label>
+        <div class="filelist" id="lReleve"></div>
+      </div>
+    </div>
+    <p class="note">Formats PDF ou image. Le DOCX de vente doit être converti en PDF (l'API ne lit pas le .docx directement).</p>
+    <div class="actions">
+      <button id="btnExtract">Lire les documents (IA)</button>
+    </div>
+    <div class="status" id="statExtract"></div>
+  </div>
+
+  <div class="card hidden" id="reviewCard">
+    <h2>3 · Vérification des données extraites <span style="font-weight:400;font-size:12px;color:#b00020">— corrige avant de générer</span></h2>
+
+    <h3 style="font-size:13px;color:var(--navy)">Achats</h3>
+    <div style="overflow:auto"><table id="tAchats"></table></div>
+
+    <h3 style="font-size:13px;color:var(--navy);margin-top:18px">Ventes</h3>
+    <div style="overflow:auto"><table id="tVentes"></table></div>
+
+    <h3 style="font-size:13px;color:var(--navy);margin-top:18px">Relevé bancaire</h3>
+    <div style="overflow:auto"><table id="tReleve"></table></div>
+
+    <div class="actions">
+      <button id="btnGenerate">Calculer & générer l'Excel</button>
+    </div>
+    <div class="status" id="statGen"></div>
+  </div>
+
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let extracted = { achats:[], ventes:[], releve:[] };
+
+// switch mensuel/trimestriel
+$("ptype").addEventListener("change", (e) => {
+  const t = e.target.value;
+  $("monthBox").classList.toggle("hidden", t !== "mensuel");
+  $("quarterBox").classList.toggle("hidden", t !== "trimestriel");
+});
+
+// afficher les noms de fichiers
+[["fAchats","lAchats"],["fVentes","lVentes"],["fReleve","lReleve"]].forEach(([inp,lst])=>{
+  $(inp).addEventListener("change", () => {
+    $(lst).textContent = [...$(inp).files].map(f=>f.name).join(", ");
+  });
+});
+
+function setStatus(el, type, msg, spin=false) {
+  el.className = "status " + type;
+  el.innerHTML = (spin ? '<span class="spinner"></span>' : "") + msg;
+}
+
+// ---- Étape extraction ----
+$("btnExtract").addEventListener("click", async () => {
+  const fd = new FormData();
+  [...$("fAchats").files].forEach(f=>fd.append("achats",f));
+  [...$("fVentes").files].forEach(f=>fd.append("ventes",f));
+  [...$("fReleve").files].forEach(f=>fd.append("releve",f));
+  if (!$("fAchats").files.length && !$("fVentes").files.length && !$("fReleve").files.length) {
+    return setStatus($("statExtract"), "err", "Ajoute au moins un document.");
+  }
+  $("btnExtract").disabled = true;
+  setStatus($("statExtract"), "info", "Lecture en cours par l'IA… (quelques secondes)", true);
+  try {
+    const res = await fetch("/api/extract", { method:"POST", body:fd });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    extracted = { achats:data.achats||[], ventes:data.ventes||[], releve:data.releve||[] };
+    renderTables();
+    $("reviewCard").classList.remove("hidden");
+    setStatus($("statExtract"), "ok", `Lu : ${extracted.achats.length} achat(s), ${extracted.ventes.length} vente(s), ${extracted.releve.length} ligne(s) de relevé.`);
+    $("reviewCard").scrollIntoView({ behavior:"smooth" });
+  } catch (e) {
+    setStatus($("statExtract"), "err", "Erreur : " + e.message);
+  } finally {
+    $("btnExtract").disabled = false;
+  }
+});
+
+// ---- Tables éditables ----
+function editableTable(tableId, rows, cols) {
+  const t = $(tableId);
+  t.innerHTML = "";
+  const thead = t.insertRow();
+  cols.forEach(c => { const th=document.createElement("th"); th.textContent=c.label; thead.appendChild(th); });
+  rows.forEach((row, ri) => {
+    const tr = t.insertRow();
+    cols.forEach(c => {
+      const td = tr.insertCell();
+      const inp = document.createElement("input");
+      inp.value = row[c.key] ?? "";
+      inp.dataset.ri = ri; inp.dataset.key = c.key; inp.dataset.type = c.type||"text";
+      inp.addEventListener("input", () => {
+        const v = inp.value;
+        row[c.key] = (c.type==="number") ? (v==="" ? null : parseFloat(v)) : (v===""? null : v);
+      });
+      td.appendChild(inp);
+    });
+  });
+}
+function renderTables() {
+  editableTable("tAchats", extracted.achats, [
+    {key:"numeroFacture",label:"N° Facture"},{key:"date",label:"Date"},{key:"fournisseur",label:"Fournisseur"},
+    {key:"identifiantFiscal",label:"IF"},{key:"ice",label:"ICE"},{key:"designation",label:"Désignation"},
+    {key:"montantHT",label:"HT",type:"number"},{key:"taux",label:"Taux",type:"number"},
+    {key:"montantTVA",label:"TVA",type:"number"},{key:"montantTTC",label:"TTC",type:"number"},
+    {key:"modePaiementFacture",label:"Mode paiement (facture)"},
+  ]);
+  editableTable("tVentes", extracted.ventes, [
+    {key:"numeroFacture",label:"N° Facture"},{key:"date",label:"Date"},{key:"client",label:"Client"},
+    {key:"designation",label:"Désignation"},{key:"montantHT",label:"HT",type:"number"},
+    {key:"taux",label:"Taux",type:"number"},{key:"montantTVA",label:"TVA",type:"number"},{key:"montantTTC",label:"TTC",type:"number"},
+  ]);
+  editableTable("tReleve", extracted.releve, [
+    {key:"dateOperation",label:"Date"},{key:"reference",label:"Référence"},{key:"nature",label:"Nature"},
+    {key:"debit",label:"Débit",type:"number"},{key:"credit",label:"Crédit",type:"number"},
+  ]);
+}
+
+// ---- Étape génération ----
+$("btnGenerate").addEventListener("click", async () => {
+  const type = $("ptype").value;
+  const period = {
+    type,
+    year: parseInt($("pyear").value,10),
+    month: parseInt($("pmonth").value,10),
+    quarter: parseInt($("pquarter").value,10),
+    creditPrecedent: parseFloat($("pcredit").value) || 0,
+  };
+  $("btnGenerate").disabled = true;
+  setStatus($("statGen"), "info", "Calcul et génération de l'Excel…", true);
+  try {
+    const res = await fetch("/api/generate", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ ...extracted, period }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    const r = data.result.recapTVA;
+    setStatus($("statGen"), "ok",
+      `✅ Généré. TVA facturée ${r.tvaFacturee} · récupérable ${r.totalRecup} · ` +
+      (r.tvaDue>0 ? `TVA due <b>${r.tvaDue}</b>` : `Crédit TVA <b>${r.creditTVA}</b>`) +
+      ` · ${data.result.anomalies.length} anomalie(s). ` +
+      `<a href="${data.file}" download>⬇️ Télécharger l'Excel</a>`);
+  } catch (e) {
+    setStatus($("statGen"), "err", "Erreur : " + e.message);
+  } finally {
+    $("btnGenerate").disabled = false;
+  }
+});
+</script>
+</body>
+</html>
