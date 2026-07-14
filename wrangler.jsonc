@@ -22,8 +22,5 @@
       "tag": "v1",
       "new_sqlite_classes": ["TvaContainer"]
     }
-  ],
-  "secrets": {
-    "required": ["GEMINI_API_KEY"]
-  }
+  ]
 }
