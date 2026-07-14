@@ -5,7 +5,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { extractAchats, extractVentes, extractReleve } from "./extractor.js";
-import { computeAll } from "./calc.js";
+import { buildDeductions, buildVentesEncaissees, finalize } from "./calc.js";
 import { buildExcel } from "./excelgen.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,28 +25,46 @@ app.post("/api/extract", upload.fields([
   { name: "ventes", maxCount: 20 },
   { name: "releve", maxCount: 10 },
 ]), async (req, res) => {
+  const f = req.files || {};
   try {
-    const f = req.files || {};
     const [achats, ventes, releve] = await Promise.all([
       f.achats ? extractAchats(f.achats) : Promise.resolve([]),
       f.ventes ? extractVentes(f.ventes) : Promise.resolve([]),
       f.releve ? extractReleve(f.releve) : Promise.resolve([]),
     ]);
+    res.json({ ok: true, achats, ventes, releve });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok: false, error: e.message });
+  } finally {
     // nettoyage des fichiers temporaires
     Object.values(f).flat().forEach((file) => fs.unlink(file.path, () => {}));
-    res.json({ ok: true, achats, ventes, releve });
+  }
+});
+
+// Étape 2 : reçoit achats/ventes/relevé (corrigés) + période -> calcule les tableaux
+// intermédiaires (déductions, CA encaissé) à vérifier/corriger avant génération finale
+app.post("/api/compute", (req, res) => {
+  try {
+    const { achats = [], ventes = [], releve = [], period } = req.body;
+    if (!period || !period.year) return res.status(400).json({ ok: false, error: "Période invalide." });
+    const { deductions, journalExceptions } = buildDeductions(achats, releve);
+    const ventesEncaissees = buildVentesEncaissees(ventes, releve, period);
+    const result = finalize({ deductions, journalExceptions, ventesEncaissees, period });
+    res.json({ ok: true, result });
   } catch (e) {
     console.error(e);
     res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-// Étape 2 : reçoit les données (corrigées) + période -> calcule + génère l'Excel
+// Étape 3 : reçoit les tableaux déjà calculés (éventuellement corrigés à la main)
+// + période -> recalcule les totaux/récap à partir de ces données et génère l'Excel
 app.post("/api/generate", async (req, res) => {
   try {
-    const { achats = [], ventes = [], releve = [], period } = req.body;
+    const { deductions = [], journalExceptions = [], ventesEncaissees = [], period } = req.body;
     if (!period || !period.year) return res.status(400).json({ ok: false, error: "Période invalide." });
-    const result = computeAll({ achats, ventes, releve, period });
+    const result = finalize({ deductions, journalExceptions, ventesEncaissees, period });
     const label = period.type === "mensuel"
       ? `${period.year}-${String(period.month).padStart(2, "0")}`
       : `${period.year}-T${period.quarter}`;

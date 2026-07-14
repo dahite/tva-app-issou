@@ -1,28 +1,41 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import fs from "fs";
+import { isDocx, extractImagesFromDocx } from "./docxImages.js";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const MODEL = "gemini-2.0-flash";
+const MODEL = "gemini-flash-latest";
 
-// Convertit un fichier local en "part" pour Gemini (PDF ou image, en base64)
-function fileToPart(filePath, mimeType) {
-  const data = fs.readFileSync(filePath).toString("base64");
-  return { inlineData: { data, mimeType } };
+// Convertit un fichier local en "part(s)" pour Gemini (PDF, image, ou photos extraites d'un .docx)
+function fileToParts(file) {
+  if (isDocx(file)) {
+    return extractImagesFromDocx(file.path, file.originalname).map((img) => ({
+      inlineData: { data: img.data, mimeType: img.mimeType },
+    }));
+  }
+  const data = fs.readFileSync(file.path).toString("base64");
+  return [{ inlineData: { data, mimeType: file.mimetype } }];
 }
+function filesToParts(files) { return files.flatMap(fileToParts); }
 function stripJson(text) { return text.replace(/```json/gi, "").replace(/```/g, "").trim(); }
 
-async function runGemini(parts, prompt) {
+async function runGemini(parts, prompt, attempt = 1) {
   const model = genAI.getGenerativeModel({
     model: MODEL,
     generationConfig: { temperature: 0, responseMimeType: "application/json" },
   });
   const result = await model.generateContent([...parts, { text: prompt }]);
   const text = result.response.text();
-  return JSON.parse(stripJson(text));
+  try {
+    return JSON.parse(stripJson(text));
+  } catch (e) {
+    console.error(`Réponse IA non-JSON (tentative ${attempt}) :`, text);
+    if (attempt < 2) return runGemini(parts, prompt, attempt + 1);
+    throw new Error("L'IA a renvoyé une réponse invalide après plusieurs essais. Réessaie, ou dépose moins de documents à la fois.");
+  }
 }
 
 export async function extractAchats(files) {
-  const parts = files.map((f) => fileToPart(f.path, f.mimetype));
+  const parts = filesToParts(files);
   const prompt = `Tu es un expert-comptable spécialisé en TVA marocaine.
 Analyse les factures d'ACHAT fournies. Extrais UNIQUEMENT ce qui est réellement écrit. N'invente rien. Absent => null.
 
@@ -45,7 +58,7 @@ Montants sans espace ni symbole (ex: 10909.09). Dates au format JJ/MM/AAAA.`;
 }
 
 export async function extractVentes(files) {
-  const parts = files.map((f) => fileToPart(f.path, f.mimetype));
+  const parts = filesToParts(files);
   const prompt = `Tu es un expert-comptable spécialisé en TVA marocaine.
 Analyse les factures de VENTE émises par le contribuable. Extrais uniquement ce qui est écrit. N'invente rien. Absent => null.
 
@@ -62,7 +75,7 @@ Montants sans espace ni symbole. Dates JJ/MM/AAAA.`;
 }
 
 export async function extractReleve(files) {
-  const parts = files.map((f) => fileToPart(f.path, f.mimetype));
+  const parts = filesToParts(files);
   const prompt = `Tu es un expert-comptable. Analyse le relevé bancaire fourni.
 Extrais CHAQUE ligne d'opération telle qu'écrite. N'invente rien. Absent => null.
 
